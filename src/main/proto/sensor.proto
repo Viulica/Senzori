@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+option java_package = "com.sensor.grpc";
+option java_outer_classname = "SensorGrpc";
+
+service SensorService {
+  // Metoda kojom jedan senzor traži očitanje od susjednog senzora
+  rpc RequestReadings (SensorIdRequest) returns (SensorReadingsResponse) {}
+
+  // Metoda za primanje očitanja od najbližeg susjeda
+  rpc SendReadings (SensorReadingsRequest) returns (SensorReadingsResponse) {}
+}
+
+// Poruka koja sadrži ID senzora
+message SensorIdRequest {
+  int64 id = 1;
+}
+
+// Poruka koja sadrži očitanja koja senzor prima
+message SensorReadingsRequest {
+  int64 id = 1;
+  double temperature = 2;
+  double pressure = 3;
+  double humidity = 4;
+  double co = 5;
+  double no2 = 6;
+  double so2 = 7;
+}
+
+// Poruka koja sadrži odgovor s očitanjima
+message SensorReadingsResponse {
+  bool success = 1;
+  string message = 2;
+}
