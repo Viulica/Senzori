@@ -1,8 +1,11 @@
 package com.sensor.sensor_backend.model;
-import com.sensor.grpc.SensorGrpc;
-import com.sensor.grpc.SensorServiceGrpc;
 import com.sensor.sensor_backend.api.SensorApiService;
 import com.sensor.sensor_backend.service.ApiClient;
+import com.sensor.grpc.SensorServiceGrpc;
+import com.sensor.grpc.SensorIdRequest;
+import com.sensor.grpc.SensorReadingsRequest;
+import com.sensor.grpc.SensorReadingsResponse;
+
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import retrofit2.Call;
@@ -211,23 +214,34 @@ public class Sensor {
     }
 
     private void sendGrpcRequestToNeighbor(SensorDTO sensorDTO) throws IOException, InterruptedException {
-
-
         ManagedChannel channel = ManagedChannelBuilder.forAddress(sensorDTO.getIp(), sensorDTO.getPort())
                 .usePlaintext()
                 .build();
 
-
         SensorServiceGrpc.SensorServiceBlockingStub stub = SensorServiceGrpc.newBlockingStub(channel);
 
-        SensorGrpc.SensorIdRequest request = SensorGrpc.SensorIdRequest.newBuilder()
+        SensorIdRequest request = SensorIdRequest.newBuilder()
                 .setId(this.id)
                 .build();
 
         try {
-            SensorGrpc.SensorReadingsResponse response = stub.requestReadings(request);
-            System.out.println("gRPC odgovor od susjeda: " + response.getMessage());
-//            SensorReadings kalibrirano = kalibriraj(this.getOcitanja().getLast(), response.getMessage());
+            SensorReadingsResponse response = stub.requestReadings(request);
+            System.out.println("gRPC odgovor od susjeda - Temperature: " + response.getTemperature() +
+                    ", Pressure: " + response.getPressure() +
+                    ", Humidity: " + response.getHumidity());
+
+            if (response.getSuccess()) {
+                SensorReadings kalibrirano = kalibriraj(this.getOcitanja().getLast(),
+                        new SensorReadings(
+                                response.getTemperature(),
+                                response.getPressure(),
+                                response.getHumidity(),
+                                response.getCo(),
+                                response.getNo2(),
+                                response.getSo2(),
+                                this
+                        ));
+            }
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -235,9 +249,23 @@ public class Sensor {
         }
     }
 
-//    private SensorReadings kalibriraj(SensorReadings r1, SensorReadings r2) {
-//        return new SensorReadings();
-//    }
+    public SensorReadings kalibriraj(SensorReadings ownReading, SensorReadings neighborReading) {
+        Double temperature = average(ownReading.getTemperature(), neighborReading.getTemperature());
+        Double pressure = average(ownReading.getPressure(), neighborReading.getPressure());
+        Double humidity = average(ownReading.getHumidity(), neighborReading.getHumidity());
+        Double co = average(ownReading.getCo(), neighborReading.getCo());
+        Double no2 = average(ownReading.getNo2(), neighborReading.getNo2());
+        Double so2 = average(ownReading.getSo2(), neighborReading.getSo2());
+
+        return new SensorReadings(temperature, pressure, humidity, co, no2, so2, this);
+    }
+
+    private Double average(Double value1, Double value2) {
+        if (value1 == null && value2 == null) return null;
+        if (value1 == null || value1 == 0) return value2;
+        if (value2 == null || value2 == 0) return value1;
+        return (value1 + value2) / 2;
+    }
 
 
     private void lokacija() {
@@ -298,32 +326,49 @@ public class Sensor {
             this.sensor = sensor;
         }
 
+
         @Override
-        public void requestReadings(SensorGrpc.SensorIdRequest request, StreamObserver<SensorGrpc.SensorReadingsResponse> responseObserver) {
+        public void requestReadings(SensorIdRequest request,
+                                    StreamObserver<SensorReadingsResponse> responseObserver) {
             System.out.println("Received gRPC request for readings from sensor ID: " + request.getId());
 
-            SensorReadings lastReading = sensor.ocitanja.isEmpty() ? null : sensor.ocitanja.get(sensor.ocitanja.size() - 1);
-            String message = (lastReading != null) ? "Returning last reading: " + lastReading.toString() : "No readings available";
+            SensorReadings lastReading = sensor.ocitanja.isEmpty() ?
+                    null : sensor.ocitanja.get(sensor.ocitanja.size() - 1);
 
-            SensorGrpc.SensorReadingsResponse response = SensorGrpc.SensorReadingsResponse.newBuilder()
-                    .setSuccess(lastReading != null)
-                    .setMessage(message)
-                    .build();
+            SensorReadingsResponse.Builder responseBuilder = SensorReadingsResponse.newBuilder()
+                    .setId(sensor.getId())
+                    .setSuccess(lastReading != null);
 
-            responseObserver.onNext(response);
+            if (lastReading != null) {
+                responseBuilder
+                        .setTemperature(lastReading.getTemperature())
+                        .setPressure(lastReading.getPressure())
+                        .setHumidity(lastReading.getHumidity())
+                        .setCo(lastReading.getCo())
+                        .setNo2(lastReading.getNo2())
+                        .setSo2(lastReading.getSo2());
+            }
+
+            responseObserver.onNext(responseBuilder.build());
             responseObserver.onCompleted();
         }
 
         @Override
-        public void sendReadings(SensorGrpc.SensorReadingsRequest request, StreamObserver<SensorGrpc.SensorReadingsResponse> responseObserver) {
+        public void sendReadings(SensorReadingsRequest request, StreamObserver<SensorReadingsResponse> responseObserver) {
             System.out.println("Received readings from sensor ID: " + request.getId());
 
             String message = "Readings received: " + request.getTemperature() + "°C, " + request.getPressure() + " Pa";
             System.out.println(message);
 
-            SensorGrpc.SensorReadingsResponse response = SensorGrpc.SensorReadingsResponse.newBuilder()
+            SensorReadingsResponse response = SensorReadingsResponse.newBuilder()
+                    .setId(sensor.getId())
                     .setSuccess(true)
-                    .setMessage("Readings received successfully")
+                    .setTemperature(request.getTemperature())
+                    .setPressure(request.getPressure())
+                    .setHumidity(request.getHumidity())
+                    .setCo(request.getCo())
+                    .setNo2(request.getNo2())
+                    .setSo2(request.getSo2())
                     .build();
 
             responseObserver.onNext(response);
@@ -332,5 +377,7 @@ public class Sensor {
     }
 
 }
+
+
 
 
