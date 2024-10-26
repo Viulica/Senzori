@@ -9,7 +9,7 @@ public class Main {
 
         Sensor sensor1 = new Sensor("127.0.0.1", 8081);
         Sensor sensor2 = new Sensor("127.0.0.1", 8082);
-        Sensor sensor3 = new Sensor("127.0.0.1", 8083);
+//        Sensor sensor3 = new Sensor("127.0.0.1", 8083);
 
         sensor1.registerSensorAsync();
         try {
@@ -23,7 +23,7 @@ public class Main {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        sensor3.registerSensorAsync();
+        // sensor3.registerSensorAsync();
 
 
     }

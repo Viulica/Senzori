@@ -1,16 +1,11 @@
 package com.sensor.sensor_backend.controllers;
-
-import com.sensor.sensor_backend.model.Sensor;
 import com.sensor.sensor_backend.model.SensorDTO;
-import com.sensor.sensor_backend.model.SensorReadings;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/sensors")
@@ -41,6 +36,17 @@ public class SensorController {
     private Long generateNewSensorId() {
         return ++idCounter;
     }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<SensorDTO> getSensorById(@PathVariable Long id) {
+        SensorDTO sensor = sensors.get(id);
+
+        if (sensor == null) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
+        return new ResponseEntity<>(sensor, HttpStatus.OK);
+    }
+
 
 
     @GetMapping("/{id}/closest-neighbor")

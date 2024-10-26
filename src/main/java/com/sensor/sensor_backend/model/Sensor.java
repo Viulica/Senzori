@@ -8,7 +8,6 @@ import io.grpc.stub.StreamObserver;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
-
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
@@ -29,17 +28,11 @@ public class Sensor {
     private String ip;
     private int port;
     private transient SensorApiService sensorApiService;
+
     private transient List<SensorReadings> ocitanja;
     private SensorService sensorService = SensorService.getInstance();
     private Server grpcServer;
 
-
-    private SensorApiService getSensorApiService() {
-        if (this.sensorApiService == null) {
-            this.sensorApiService = ApiClient.getSensorApiService();
-        }
-        return this.sensorApiService;
-    }
 
     public Sensor(String ip, int port) {
         this.startTime = LocalDateTime.now();
@@ -50,40 +43,14 @@ public class Sensor {
         lokacija();
     }
 
-    public void startGeneratingReadings() throws IOException, InterruptedException {
-        while (true) {
-            SensorReadings reading = generirajOcitavanje();
-            System.out.println("Generirano očitanje za senzor " + this.getId() + ": " + reading);
-
-            SensorDTO closestNeighbor = requestClosestNeighbor();
-            System.out.println("Closest neighbor to sensor " + this.getId() + ": " + closestNeighbor);
-            // sendGrpcRequestToNeighbor(closestNeighbor);
-
-
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-
-
-    private void lokacija() {
-        Random random = new Random();
-        this.latitude = 45.75 + (random.nextDouble() * (45.85 - 45.75));
-        this.longitude = 15.87 + (random.nextDouble() * (16 - 15.87));
-    }
-
     public void registerSensorAsync() {
         new Thread(() -> {
             register();
             try {
-            Thread.sleep(3000);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             try {
                 startGeneratingReadings();
             } catch (IOException e) {
@@ -136,22 +103,23 @@ public class Sensor {
         });
     }
 
+    public void startGeneratingReadings() throws IOException, InterruptedException {
+        while (true) {
+            SensorReadings reading = generirajOcitavanje();
+            this.ocitanja.add(reading);
+            System.out.println("Generirano očitanje za senzor " + this.getPort() + ": " + reading);
 
-    public static String[] getReading(int rowIndex) {
-        try (BufferedReader br = new BufferedReader(new FileReader(CSV_FILE_PATH))) {
-            String line;
-            int currentRow = 0;
+            SensorDTO closestNeighbor = requestClosestNeighbor();
+            System.out.println("Šaljem grpc request senzoru " + closestNeighbor.getPort());
+            sendGrpcRequestToNeighbor(closestNeighbor);
 
-            while ((line = br.readLine()) != null) {
-                if (currentRow == rowIndex) {
-                    return line.split(",");
-                }
-                currentRow++;
+
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
-        return null;
     }
 
     public SensorReadings generirajOcitavanje() {
@@ -180,6 +148,23 @@ public class Sensor {
         ocitanja.add(newReading);
 
         return newReading;
+    }
+
+    public static String[] getReading(int rowIndex) {
+        try (BufferedReader br = new BufferedReader(new FileReader(CSV_FILE_PATH))) {
+            String line;
+            int currentRow = 0;
+
+            while ((line = br.readLine()) != null) {
+                if (currentRow == rowIndex) {
+                    return line.split(",");
+                }
+                currentRow++;
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     public SensorDTO requestClosestNeighbor() {
@@ -232,10 +217,6 @@ public class Sensor {
                 .usePlaintext()
                 .build();
 
-        System.out.println("otvorio sam kanal" + channel.toString());
-        ConnectivityState state = channel.getState(true);
-        System.out.println("Stanje kanala: " + state.toString());
-
 
         SensorServiceGrpc.SensorServiceBlockingStub stub = SensorServiceGrpc.newBlockingStub(channel);
 
@@ -246,11 +227,30 @@ public class Sensor {
         try {
             SensorGrpc.SensorReadingsResponse response = stub.requestReadings(request);
             System.out.println("gRPC odgovor od susjeda: " + response.getMessage());
+//            SensorReadings kalibrirano = kalibriraj(this.getOcitanja().getLast(), response.getMessage());
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
             channel.shutdown();
         }
+    }
+
+//    private SensorReadings kalibriraj(SensorReadings r1, SensorReadings r2) {
+//        return new SensorReadings();
+//    }
+
+
+    private void lokacija() {
+        Random random = new Random();
+        this.latitude = 45.75 + (random.nextDouble() * (45.85 - 45.75));
+        this.longitude = 15.87 + (random.nextDouble() * (16 - 15.87));
+    }
+
+    private SensorApiService getSensorApiService() {
+        if (this.sensorApiService == null) {
+            this.sensorApiService = ApiClient.getSensorApiService();
+        }
+        return this.sensorApiService;
     }
 
 
@@ -279,6 +279,10 @@ public class Sensor {
 
     public int getPort() {
         return port;
+    }
+
+    public List<SensorReadings> getOcitanja() {
+        return ocitanja;
     }
 
     @Override
