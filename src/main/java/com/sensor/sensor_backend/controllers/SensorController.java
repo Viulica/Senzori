@@ -1,17 +1,23 @@
 package com.sensor.sensor_backend.controllers;
 import com.sensor.sensor_backend.model.SensorDTO;
+import com.sensor.sensor_backend.model.SensorReadings;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/sensors")
 public class SensorController {
 
     private HashMap<Long, SensorDTO> sensors = new HashMap<>();
+    private HashMap<Long, List<SensorReadings>> readings = new HashMap<>();
     private static Long idCounter = 0L;
 
     @PostMapping("/register")
@@ -47,6 +53,37 @@ public class SensorController {
         return new ResponseEntity<>(sensor, HttpStatus.OK);
     }
 
+    @PostMapping("/{sensorId}/readings")
+    public ResponseEntity<Void> saveSensorReading(
+            @PathVariable Long sensorId,
+            @RequestBody SensorReadings reading) {
+
+        if (!sensors.containsKey(sensorId)) {
+            return ResponseEntity.noContent().build();
+        }
+
+        readings.computeIfAbsent(sensorId, k -> new ArrayList<>()).add(reading);
+
+        String readingUri = ServletUriComponentsBuilder
+                .fromCurrentContextPath()
+                .path("/api/sensors/{sensorId}/readings")
+                .buildAndExpand(sensorId)
+                .toUriString();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Location", readingUri);
+
+        return new ResponseEntity<>(headers, HttpStatus.CREATED);
+    }
+
+    @GetMapping("/{id}/readings")
+    public ResponseEntity<List<SensorReadings>> getReadings(@PathVariable("id") Long sensorId) {
+        if (!readings.containsKey(sensorId)) {
+            return ResponseEntity.noContent().build();
+        }
+        List<SensorReadings> sensorReadings = readings.get(sensorId);
+        return ResponseEntity.ok(sensorReadings);
+    }
 
 
     @GetMapping("/{id}/closest-neighbor")

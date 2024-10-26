@@ -2,6 +2,7 @@ package com.sensor.sensor_backend.api;
 
 import com.sensor.sensor_backend.model.Sensor;
 import com.sensor.sensor_backend.model.SensorDTO;
+import com.sensor.sensor_backend.model.SensorReadings;
 import retrofit2.Call;
 import retrofit2.http.Body;
 import retrofit2.http.GET;
@@ -18,5 +19,8 @@ public interface SensorApiService {
 
     @GET("/api/sensors/{id}")
     Call<Sensor> getSensorById(@Path("id") Long id);
+
+    @POST("/api/sensors/{id}/readings")
+    Call<Void> saveReading(@Path("id") Long sensorId, @Body SensorReadings reading);
 
 }

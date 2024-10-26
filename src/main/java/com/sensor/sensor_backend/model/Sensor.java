@@ -5,7 +5,6 @@ import com.sensor.grpc.SensorServiceGrpc;
 import com.sensor.grpc.SensorIdRequest;
 import com.sensor.grpc.SensorReadingsRequest;
 import com.sensor.grpc.SensorReadingsResponse;
-
 import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import retrofit2.Call;
@@ -226,12 +225,12 @@ public class Sensor {
 
         try {
             SensorReadingsResponse response = stub.requestReadings(request);
-            System.out.println("gRPC odgovor od susjeda - Temperature: " + response.getTemperature() +
-                    ", Pressure: " + response.getPressure() +
-                    ", Humidity: " + response.getHumidity());
 
+            SensorReadings kalibrirano;
+            SensorReadings lastOwnReading = this.getOcitanja().get(this.getOcitanja().size() - 1);
             if (response.getSuccess()) {
-                SensorReadings kalibrirano = kalibriraj(this.getOcitanja().getLast(),
+                kalibrirano = kalibriraj(this.getOcitanja().get(this.getOcitanja().size() - 1)
+                        ,
                         new SensorReadings(
                                 response.getTemperature(),
                                 response.getPressure(),
@@ -241,7 +240,12 @@ public class Sensor {
                                 response.getSo2(),
                                 this
                         ));
+            } else {
+                kalibrirano = lastOwnReading;
             }
+            System.out.println("kalibrirano očitanje: " + kalibrirano);
+            saveReading(kalibrirano);
+
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -250,6 +254,7 @@ public class Sensor {
     }
 
     public SensorReadings kalibriraj(SensorReadings ownReading, SensorReadings neighborReading) {
+        System.out.println("ownReading: " + ownReading + ", neighborReading: " + neighborReading);
         Double temperature = average(ownReading.getTemperature(), neighborReading.getTemperature());
         Double pressure = average(ownReading.getPressure(), neighborReading.getPressure());
         Double humidity = average(ownReading.getHumidity(), neighborReading.getHumidity());
@@ -265,6 +270,31 @@ public class Sensor {
         if (value1 == null || value1 == 0) return value2;
         if (value2 == null || value2 == 0) return value1;
         return (value1 + value2) / 2;
+    }
+
+    public void saveReading(SensorReadings reading) {
+
+        SensorApiService service = getSensorApiService();
+        Call<Void> call = service.saveReading(this.id, reading);
+
+        call.enqueue(new Callback<Void>() {
+            @Override
+            public void onResponse(Call<Void> call, Response<Void> response) {
+                if (response.isSuccessful() && response.code() == 201) {
+                    String location = response.headers().get("Location");
+                    System.out.println("Reading saved successfully at: " + location);
+                } else if (response.code() == 204) {
+                    System.out.println("No sensor found for reading storage.");
+                } else {
+                    System.out.println("Failed to save reading, status code: " + response.code());
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Void> call, Throwable t) {
+                System.out.println("Error while saving reading: " + t.getMessage());
+            }
+        });
     }
 
 
@@ -344,9 +374,9 @@ public class Sensor {
                         .setTemperature(lastReading.getTemperature())
                         .setPressure(lastReading.getPressure())
                         .setHumidity(lastReading.getHumidity())
-                        .setCo(lastReading.getCo())
-                        .setNo2(lastReading.getNo2())
-                        .setSo2(lastReading.getSo2());
+                        .setCo(lastReading.getCo() != null ? lastReading.getCo() : 0.0)
+                        .setNo2(lastReading.getNo2() != null ? lastReading.getNo2() : 0.0)
+                        .setSo2(lastReading.getSo2() != null ? lastReading.getSo2() : 0.0);
             }
 
             responseObserver.onNext(responseBuilder.build());

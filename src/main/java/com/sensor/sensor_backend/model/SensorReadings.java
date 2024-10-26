@@ -16,17 +16,18 @@ public class SensorReadings {
         this.sensor = sensor;
     }
 
-    private Sensor sensor;
+    private transient Sensor sensor;
 
-    public SensorReadings(double temperature, double pressure, double humidity, Double co, Double no2, Double so2, Sensor sensor) {
+    public SensorReadings(Double temperature, Double pressure, Double humidity, Double co, Double no2, Double so2, Sensor sensor) {
         this.temperature = temperature;
         this.pressure = pressure;
         this.humidity = humidity;
-        this.co = co;
-        this.no2 = no2;
-        this.so2 = so2;
+        this.co = co != null ? co : 0.0;
+        this.no2 = no2 != null ? no2 : 0.0;
+        this.so2 = so2 != null ? so2 : 0.0;
         this.sensor = sensor;
     }
+
 
     public double getTemperature() {
         return temperature;

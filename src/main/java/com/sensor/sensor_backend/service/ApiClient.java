@@ -16,6 +16,7 @@ public class ApiClient {
 
             Gson gson = new GsonBuilder()
                     .registerTypeAdapter(LocalDateTime.class, new LocalDateTimeAdapter())
+                    .serializeNulls()
                     .create();
             retrofit = new Retrofit.Builder()
                     .baseUrl("http://localhost:8080/")
