@@ -7,9 +7,9 @@ import java.io.IOException;
 public class Main {
     public static void main(String[] args) throws IOException {
 
-        Sensor sensor1 = new Sensor(1L, "Sensor 1", "127.0.0.1", 8080);
-        Sensor sensor2 = new Sensor(2L, "Sensor 2", "127.0.0.1", 8081);
-        Sensor sensor3 = new Sensor(3L, "Sensor 3", "127.0.0.1", 8082);
+        Sensor sensor1 = new Sensor("127.0.0.1", 8081);
+        Sensor sensor2 = new Sensor("127.0.0.1", 8082);
+        Sensor sensor3 = new Sensor("127.0.0.1", 8083);
 
         sensor1.registerSensorAsync();
         try {

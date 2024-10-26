@@ -3,10 +3,7 @@ import com.sensor.grpc.SensorGrpc;
 import com.sensor.grpc.SensorServiceGrpc;
 import com.sensor.sensor_backend.api.SensorApiService;
 import com.sensor.sensor_backend.service.ApiClient;
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
-import io.grpc.Server;
-import io.grpc.ServerBuilder;
+import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -20,25 +17,21 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-
 import static java.lang.Math.abs;
 
 
 public class Sensor {
     private final LocalDateTime startTime;
-    private Long id;
-    private String name;
     private double latitude;
     private double longitude;
     private static final String CSV_FILE_PATH = "src/main/resources/readings.csv";
+    private Long id;
     private String ip;
     private int port;
     private transient SensorApiService sensorApiService;
     private transient List<SensorReadings> ocitanja;
     private SensorService sensorService = SensorService.getInstance();
     private Server grpcServer;
-    private int grpcPort;
-
 
 
     private SensorApiService getSensorApiService() {
@@ -48,32 +41,33 @@ public class Sensor {
         return this.sensorApiService;
     }
 
-    public Sensor(Long id, String name, String ip, int port) {
-        this.id = id;
-        this.name = name;
+    public Sensor(String ip, int port) {
         this.startTime = LocalDateTime.now();
         this.ip = ip;
         this.port = port;
+        this.id = 0L; // postavi na nulu dok se ne registrira
         this.ocitanja = new ArrayList<>();
         lokacija();
     }
 
+    public void startGeneratingReadings() throws IOException, InterruptedException {
+        while (true) {
+            SensorReadings reading = generirajOcitavanje();
+            System.out.println("Generirano očitanje za senzor " + this.getId() + ": " + reading);
 
-    public void startGeneratingReadings() {
-        // System.out.println("Starting generating readings for sensor: " + name);
-            while (true) {
-                SensorReadings reading = generirajOcitavanje();
-                // System.out.println("Generirano očitanje za senzor " + this.getName() + ": " + reading);
+            SensorDTO closestNeighbor = requestClosestNeighbor();
+            System.out.println("Closest neighbor to sensor " + this.getId() + ": " + closestNeighbor);
+            // sendGrpcRequestToNeighbor(closestNeighbor);
 
-                SensorNeighborDTO closestNeighbor = requestClosestNeighbor();
 
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
+        }
     }
+
 
 
     private void lokacija() {
@@ -90,32 +84,41 @@ public class Sensor {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-            startGeneratingReadings();
+            try {
+                startGeneratingReadings();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
 
         }).start();
     }
 
 
     public void register() {
+
         SensorApiService service = getSensorApiService();
-        Call<Void> call = service.registerSensor(this);
+        Call<Void> call = service.registerSensor(new SensorDTO(this.latitude, this.longitude, this.ip, this.port));
+
         call.enqueue(new Callback<Void>() {
             @Override
             public void onResponse(Call<Void> call, Response<Void> response) {
                 if (response.isSuccessful()) {
                     if (response.code() == 201) {
                         String locationHeader = response.headers().get("Location");
+                        String id = response.headers().get("Generated-Id");
                         System.out.println("Sensor registered successfully. Location: " + locationHeader);
 
-                        try {
-                            setGrpcPort(startGrpcServer(Sensor.this));
-                            System.out.println("Sensor grpc server started on port " + getGrpcPort());
-                        } catch (IOException e) {
-                            System.out.println("Failed to start gRPC server: " + e.getMessage());
+                        if (id != null) {
+                            setId(Long.parseLong(id));
                         }
 
-                        sensorService.addSensor(Sensor.this.getPort(), Sensor.this.getId(), Sensor.this.getName());
-                        System.out.println("sensor " + name + " start time: " + startTime);
+                        try {
+                            startGrpcServer();
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
 
                     } else {
                         System.out.println("Unexpected status code: " + response.code());
@@ -153,13 +156,10 @@ public class Sensor {
 
     public SensorReadings generirajOcitavanje() {
 
-        // System.out.println("generiram ocitavanja za senzor" + name);
 
         long brojAktivnihSekundi = abs(ChronoUnit.SECONDS.between(startTime, LocalDateTime.now()));
-        // System.out.println("broj aktivnih sekundi za senzor " + name + " je: " + brojAktivnihSekundi);
         brojAktivnihSekundi++;
         int row = (int) ((brojAktivnihSekundi % 100) + 1);
-        // System.out.println("Row chosen for sensor  " + name + ": " + row);
 
         String[] readings = getReading(row);
 
@@ -182,22 +182,16 @@ public class Sensor {
         return newReading;
     }
 
-    public SensorNeighborDTO requestClosestNeighbor() {
+    public SensorDTO requestClosestNeighbor() {
         SensorApiService sensorApiService = ApiClient.getSensorApiService();
 
-        Call<SensorNeighborDTO> call = sensorApiService.getClosestNeighbor(this.id);
+        Call<SensorDTO> call = sensorApiService.getClosestNeighbor(this.id);
 
         try {
-            Response<SensorNeighborDTO> response = call.execute();
+            Response<SensorDTO> response = call.execute();
             if (response.isSuccessful() && response.body() != null) {
 
-                SensorNeighborDTO closestNeighbor = response.body();
-                Long id = sensorService.getSensorByPort(closestNeighbor.getPort()).getId();
-                String name = sensorService.getSensorByPort(closestNeighbor.getPort()).getName();
-
-                Sensor s = new Sensor(id, name, closestNeighbor.getIp(), closestNeighbor.getPort());
-                sendGrpcRequestToNeighbor(s);
-
+                SensorDTO closestNeighbor = response.body();
                 return closestNeighbor;
             } else {
                 System.out.println("Failed to get closest neighbor: " + response.code());
@@ -208,21 +202,21 @@ public class Sensor {
         return null;
     }
 
-    public int startGrpcServer(Sensor sensor) throws IOException {
-        grpcServer = ServerBuilder.forPort(0)
-                .addService(new SensorServiceImpl(sensor))
+    public void startGrpcServer() throws IOException {
+
+        grpcServer = ServerBuilder.forPort(this.getPort())
+                .addService(new SensorServiceImpl(this))
                 .build()
                 .start();
 
-        int assignedPort = grpcServer.getPort();
-        System.out.println("gRPC server for sensor " + sensor.getName() + " started on port " + assignedPort);
+        System.out.println("grpc server started for sensor " + this.getId());
+
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Shutting down gRPC server for sensor: " + sensor.getName());
+            System.out.println("Shutting down gRPC server for sensor: " + this.getId());
             stopGrpcServer();
         }));
 
-        return assignedPort;
     }
 
     public void stopGrpcServer() {
@@ -231,20 +225,17 @@ public class Sensor {
         }
     }
 
-    private void sendGrpcRequestToNeighbor(Sensor sensor) throws IOException {
-        int serverPort = 0;
-        while (sensor.getGrpcPort() == 0) {
-            try {
-                Thread.sleep(100);
-                serverPort = sensor.getGrpcPort();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
+    private void sendGrpcRequestToNeighbor(SensorDTO sensorDTO) throws IOException, InterruptedException {
 
-        ManagedChannel channel = ManagedChannelBuilder.forAddress(sensor.getIp(), serverPort)
+
+        ManagedChannel channel = ManagedChannelBuilder.forAddress(sensorDTO.getIp(), sensorDTO.getPort())
                 .usePlaintext()
                 .build();
+
+        System.out.println("otvorio sam kanal" + channel.toString());
+        ConnectivityState state = channel.getState(true);
+        System.out.println("Stanje kanala: " + state.toString());
+
 
         SensorServiceGrpc.SensorServiceBlockingStub stub = SensorServiceGrpc.newBlockingStub(channel);
 
@@ -261,32 +252,15 @@ public class Sensor {
             channel.shutdown();
         }
     }
-    public String getName() {
-        return name;
-    }
 
-    public void setName(String name) {
-        this.name = name;
-    }
 
     public double getLatitude() {
         return latitude;
     }
 
-    public void setLatitude(double latitude) {
-        this.latitude = latitude;
-    }
 
     public double getLongitude() {
         return longitude;
-    }
-
-    public void setLongitude(double longitude) {
-        this.longitude = longitude;
-    }
-
-    public String getInfo() {
-        return this.id + this.name + this.ip + this.port;
     }
 
 
@@ -294,40 +268,22 @@ public class Sensor {
         return ip;
     }
 
-    public void setIp(String ip) {
-        this.ip = ip;
+    public Long getId() {
+        return id;
     }
 
-    public LocalDateTime getStartTime() {
-        return startTime;
-    }
-    public List<SensorReadings> getOcitanja() {
-        return ocitanja;
+    public void setId(Long id) {
+        this.id = id;
     }
 
-    public void setOcitanja(List<SensorReadings> ocitanja) {
-        this.ocitanja = ocitanja;
-    }
-
-    public int getGrpcPort() {
-        return grpcPort;
-    }
-
-    public void setGrpcPort(int grpcPort) {
-        this.grpcPort = grpcPort;
-    }
 
     public int getPort() {
         return port;
     }
 
-    public Long getId() {
-        return id;
-    }
-
     @Override
     public String toString() {
-        return "Sensor{id=" + id + ", name='" + name + "'}";
+        return "Sensor{id=" + id + "}";
     }
 
     static class SensorServiceImpl extends SensorServiceGrpc.SensorServiceImplBase {

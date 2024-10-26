@@ -1,12 +1,12 @@
 package com.sensor.sensor_backend.model;
 
-public class SensorNeighborDTO {
+public class SensorDTO {
     private double latitude;
     private double longitude;
     private String ip;
     private int port;
 
-    public SensorNeighborDTO(double latitude, double longitude, String ip, int port) {
+    public SensorDTO(double latitude, double longitude, String ip, int port) {
         this.latitude = latitude;
         this.longitude = longitude;
         this.ip = ip;
@@ -44,6 +44,11 @@ public class SensorNeighborDTO {
 
     public void setPort(int port) {
         this.port = port;
+    }
+
+    @Override
+    public String toString() {
+        return "lat: " + this.latitude + ", lon: " + this.longitude + ", ip: " + this.ip + ", port: " + this.port;
     }
 
 
